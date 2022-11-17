@@ -15,7 +15,7 @@ from aircraft_display import AircraftDisplay
 REF_LOC = (40.569143, -80.265560)
 HEADERS = ("Call", "Man", "Model", "Speed", "Rate", "Lat", "Lon", "Dist", "Alt", "Last")
 ALERT_HEADERS = ("Time", "Callsign", "Manufacturer", "Model", "Distance")
-MIN_DIST = 10
+MIN_DIST = 5
 
 myclient = pymongo.MongoClient("mongodb://mongo:mongo@192.168.1.104:27017/")
 db = myclient["test"]
@@ -137,8 +137,21 @@ class ADSBClient(TcpClient):
 
         # If key is not in alerts dict or aircraft info has been updated (besides timestamp), update record
         if not alert or check_vals != info:
+            # Add timestamp after update check
+            # info["ts"] = ac["ts"]
             self.alerts[icao] = info
             
+            # Remove any alerts older than 1m (e.g. - ones that landed, not went out of range)
+            # stale = []
+            # for i, ac in self.alerts.items():
+            #     if time.time() - ac["ts"] > 10:
+            #         stale.append(i)
+            #         if ac == self.closest:
+            #             self.closest = None
+            #             self.closest_dist = 9999
+
+            # removed = [self.alerts.pop(i) for i in stale]
+
             # Determine closest aircraft in alerts
             for ac in self.alerts.values():
                 # print(ac)
@@ -153,13 +166,15 @@ class ADSBClient(TcpClient):
                 self.last_alert = self.closest
                 payload = self.process_message(icao)
                 # print("Sending", call, manu_model, dist)
+                print(f"Alerts: {len(self.alerts)}")
                 self.display_pipe.send(payload)
 
     def remove_alert(self, icao):
-        #print(f"Removing {icao} at dist {dist}")
         alert = self.alerts.pop(icao)
+        dist = alert.get("dist")
+        print(f"Removing {icao} at dist {dist}")
         # If alert is closest, reset closest and closest_dist
-        if self.closest_dist == alert.get("dist"):
+        if self.closest_dist == dist:
             self.closest = None
             self.closest_dist = 9999
 
@@ -283,7 +298,10 @@ class ADSBClient(TcpClient):
             if dist and dist <= MIN_DIST:
                 self.process_alert(icao, ac)
             elif dist and dist > MIN_DIST and self.alerts.get(icao):
-                 # When aircraft goes out of range, remove from alerts
+                # TODO: Figure out why some aircraft aren't being removed, 
+                # if they're disappearing before they go out of range...
+                
+                # When aircraft goes out of range, remove from alerts
                 self.remove_alert(icao)
 
 if __name__ == '__main__':

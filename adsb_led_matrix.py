@@ -7,26 +7,11 @@ from aircraft_display import AircraftDisplay
 
 
 def read_data_stream(display_pipe):
-    for msg in iter(display_pipe.recv, "sentinel"):
-        # print("Receiving message...")
-        if len(msg) == 5:
-            callsign, model, dist, schd_from, schd_to = msg
-        elif len(msg) == 3:
-            callsign, model, dist = msg
-        else:
-            raise ValueError("Unexpected number of items in response")
-            
-        # print(callsign, model, dist)
-        if schd_from and schd_to:
-            route = f"{schd_from} -> {schd_to}"
-        else:
-            route = None
-
-        ac_display = AircraftDisplay(callsign, model, f"{dist}mi", route)
-        sys.argv.extend(["-c", "2"])
-        sys.argv.extend(["--led-no-drop-privs"])
-        if (not ac_display.process()):
-            ac_display.print_help()
+    ac_display = AircraftDisplay(display_pipe)
+    sys.argv.extend(["-c", "2"])
+    sys.argv.extend(["--led-no-drop-privs"])
+    if (not ac_display.process()):
+        ac_display.print_help()
 
 
 if __name__ == '__main__':
