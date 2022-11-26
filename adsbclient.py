@@ -5,21 +5,14 @@ import time
 
 import geopy.distance
 import pyModeS as pms
-import pymongo
-import requests
 
 from pyModeS.extra.tcpclient import TcpClient
 from terminaltables import AsciiTable
-from aircraft_display import AircraftDisplay
 
 REF_LOC = (40.569143, -80.265560)
 HEADERS = ("Call", "Man", "Model", "Speed", "Rate", "Lat", "Lon", "Dist", "Alt", "Last")
 ALERT_HEADERS = ("Time", "Callsign", "Manufacturer", "Model", "Distance")
 MIN_DIST = 5
-
-myclient = pymongo.MongoClient("mongodb://mongo:mongo@192.168.1.104:27017/")
-db = myclient["test"]
-collection = db["aircraft"]
 
 # cols = { 
 #     "_id" : ObjectId("63320d967d3caea1a28afc66"), 
@@ -55,128 +48,19 @@ collection = db["aircraft"]
 # define your custom class by extending the TcpClient
 #   - implement your handle_messages() methods
 class ADSBClient(TcpClient):
-    def __init__(self, host, port, rawtype, display_pipe=None, show_table=False):
+    def __init__(self, host, port, rawtype, aircraft_db=None, show_table=False, alerter=None):
         super(ADSBClient, self).__init__(host, port, rawtype)
         self.aircraft = {}
-        self.alerts = {}
-        self.display_pipe = display_pipe
-        self.display_pipe.send(["-------", "-------", 9999, None, None])
         self.show_table = show_table
-        self.closest = None
-        self.closest_dist = 9999
-        self.last_alert = None
-
-    def process_message(self, icao):
-        # TODO: Send full dict to display object, don't do formatting here
-        manu_model = ""
-        call = self.closest.get("call")
-        manu = self.closest.get("manu")
-        model = self.closest.get("model")
-        if manu:
-            manu_model = str(manu[:3]).upper()
-
-        if model:
-            manu_model += str(model)
-
-        dist = self.closest.get("dist")
-        schd_from = self.closest.get("schd_from")
-        schd_to = self.closest.get("schd_to")
-
-        # https://api.planespotters.net/pub/photos/hex/A860B7
-
-        # N918TA
-        # If callsign is known and from/to are null, send request for flight info
-        if call and (not schd_from or not schd_to):
-            url = "https://www.flightradar24.com/v1/search/web/find"
-            response = requests.get(url, params={"query": call, "limit": 1, "type": "live"})
-            results = None
-            if response.status_code == 200:
-                results = response.json()["results"]
-            else:
-                print(response.text)
-                
-            # print(results)
-            data = None
-            if results:
-                data = results[0].get("detail")
-
-            # If results are empty or details aren't included, set to Unknown
-            if data:
-                schd_from = data.get("schd_from", "Unknown")
-                schd_to = data.get("schd_to", "Unknown")
-            else:
-                schd_from = "Unknown"
-                schd_to = "Unknown"
-
-            # If it didn't just go out of range add the from/to info
-            if self.alerts.get(icao):
-                self.alerts[icao]["schd_from"] = schd_from
-                self.alerts[icao]["schd_to"] = schd_to
-            else:
-                print("Not found")
-
-        payload = [call, manu_model, dist]
-        if schd_from != "Unknown" and schd_to != "Unknown":
-            payload.extend([schd_from, schd_to])
-
-        return payload
-
-    def process_alert(self, icao, ac):
-        info = { 
-            "call": ac["call"], 
-            "manu": ac["manu"], 
-            "model": ac["model"], 
-            "dist": ac["dist"]
-        }
- 
-        alert = self.alerts.get(icao)
-        if alert:
-            check_vals = { k: v for k, v in alert.items() if k not in ("ts", "schd_from", "schd_to") }
+        if aircraft_db is not None:
+            self.aircraft_db = aircraft_db
         else:
-            check_vals = {}
+            self.aircraft_db = None
 
-        # If key is not in alerts dict or aircraft info has been updated (besides timestamp), update record
-        if not alert or check_vals != info:
-            # Add timestamp after update check
-            # info["ts"] = ac["ts"]
-            self.alerts[icao] = info
-            
-            # Remove any alerts older than 1m (e.g. - ones that landed, not went out of range)
-            # stale = []
-            # for i, ac in self.alerts.items():
-            #     if time.time() - ac["ts"] > 10:
-            #         stale.append(i)
-            #         if ac == self.closest:
-            #             self.closest = None
-            #             self.closest_dist = 9999
-
-            # removed = [self.alerts.pop(i) for i in stale]
-
-            # Determine closest aircraft in alerts
-            for ac in self.alerts.values():
-                # print(ac)
-                dist = ac.get("dist")
-                # Set closest aircraft and distance OR update the closest if it gets farther away
-                if (dist and dist <= self.closest_dist) or (ac.get("call") == self.closest.get("call")):
-                    self.closest = ac
-                    self.closest_dist = dist
-
-            # Only send message if closest has changed
-            if self.display_pipe and self.closest != self.last_alert:
-                self.last_alert = self.closest
-                payload = self.process_message(icao)
-                # print("Sending", call, manu_model, dist)
-                print(f"Alerts: {len(self.alerts)}")
-                self.display_pipe.send(payload)
-
-    def remove_alert(self, icao):
-        alert = self.alerts.pop(icao)
-        dist = alert.get("dist")
-        print(f"Removing {icao} at dist {dist}")
-        # If alert is closest, reset closest and closest_dist
-        if self.closest_dist == dist:
-            self.closest = None
-            self.closest_dist = 9999
+        if alerter:
+            self.alerter = alerter
+        else:
+            self.alerter = None
 
     def handle_messages(self, messages):
         msg0 = None
@@ -225,13 +109,14 @@ class ADSBClient(TcpClient):
             else:
                 manu = None
                 model = None
-                for x in collection.find(
-                    { "icao24": icao.lower() },
-                    { "_id": 0, "manufacturername": 1, "model": 1 }
-                ):
-                    # print(x)
-                    manu = x.get("manufacturername")
-                    model = x.get("model")
+                if self.aircraft_db is not None:
+                    for x in self.aircraft_db.find(
+                        { "icao24": icao.lower() },
+                        { "_id": 0, "manufacturername": 1, "model": 1 }
+                    ):
+                        # print(x)
+                        manu = x.get("manufacturername")
+                        model = x.get("model")
 
                 ac = {
                     "call": None,
@@ -294,17 +179,16 @@ class ADSBClient(TcpClient):
             # TODO: Convert all print statements to logging messages
 
             # If distance is within distance threshold, process aircraft alert
-            dist = ac.get("dist")
-            if dist and dist <= MIN_DIST:
-                self.process_alert(icao, ac)
-            elif dist and dist > MIN_DIST and self.alerts.get(icao):
-                # TODO: Figure out why some aircraft aren't being removed, 
-                # if they're disappearing before they go out of range...
-                
-                # When aircraft goes out of range, remove from alerts
-                self.remove_alert(icao)
+            if self.alerter:
+                dist = ac.get("dist")
+                if dist and dist <= MIN_DIST:
+                    self.alerter.process_alert(icao, ac)
+                elif dist and dist > MIN_DIST and self.alerter.alerts.get(icao):
+                    # TODO: Figure out how to remove aircraft that land...
+                    # When aircraft goes out of range, remove from alerts
+                    self.alerter.remove_alert(icao)
 
 if __name__ == '__main__':
     # run new client, change the host, port, and rawtype if needed
-    client = ADSBClient(host="127.0.0.1", port=30002, rawtype="raw", display_pipe=parent_conn)
+    client = ADSBClient(host="127.0.0.1", port=30002, rawtype="raw", show_table=True)
     client.run()
