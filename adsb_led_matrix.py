@@ -1,12 +1,15 @@
 import multiprocessing as mp
 import sys
 import time
+from os import environ as env
 
 import pymongo
 
 from adsb_alert import ADSBAlert
 from adsbclient import ADSBClient
 from aircraft_display import AircraftDisplay
+
+MONGO_URI = env.get("MONGO_URI", "192.168.1.200")
 
 
 def read_data_stream(display_pipe):
@@ -26,8 +29,8 @@ if __name__ == "__main__":
 
     alerter = ADSBAlert(display_pipe=w_conn)
     # run new client, change the host, port, and rawtype if needed
-    mongo = pymongo.MongoClient("mongodb://mongo:mongo@192.168.1.104:27017/")
-    db = mongo["test"]
+    mongo = pymongo.MongoClient(f"mongodb://mongo:mongo@{MONGO_URI}:27017/")
+    db = mongo["adsb"]
     aircraft_db = db["aircraft"]
 
     client = ADSBClient(

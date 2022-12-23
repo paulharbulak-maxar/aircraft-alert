@@ -1,9 +1,7 @@
 import requests
 
-REF_LOC = (40.569143, -80.265560)
 HEADERS = ("Call", "Man", "Model", "Speed", "Rate", "Lat", "Lon", "Dist", "Alt", "Last")
 ALERT_HEADERS = ("Time", "Callsign", "Manufacturer", "Model", "Distance")
-MIN_DIST = 30
 
 
 class ADSBAlert:
