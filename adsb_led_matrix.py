@@ -27,7 +27,7 @@ if __name__ == "__main__":
     proc = mp.Process(target=read_data_stream, args=(r_conn,))
     proc.start()
 
-    alerter = ADSBAlert(display_pipe=w_conn)
+    alerter = ADSBAlert(display_pipe=w_conn, save_alert=True)
     # run new client, change the host, port, and rawtype if needed
     mongo = pymongo.MongoClient(f"mongodb://mongo:mongo@{MONGO_URI}:27017/")
     db = mongo["adsb"]
