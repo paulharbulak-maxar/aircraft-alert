@@ -38,8 +38,10 @@ class ADSBAlert:
 
         if photos:
             doc["photos"] = photos
+        else:
+            doc["photos"] = None
 
-        res = self.es.index(INDEX, doc)
+        res = self.es.index(index=INDEX, document=doc)
         # print(res)
 
     def process_message(self, icao):
@@ -57,6 +59,7 @@ class ADSBAlert:
         dist = self.closest.get("dist")
         schd_from = self.closest.get("schd_from")
         schd_to = self.closest.get("schd_to")
+        route = None
 
         # https://api.planespotters.net/pub/photos/hex/A860B7
 
@@ -79,9 +82,11 @@ class ADSBAlert:
             if data:
                 schd_from = data.get("schd_from", "Unknown")
                 schd_to = data.get("schd_to", "Unknown")
+                route = data.get("route", "Unknown")
             else:
                 schd_from = "Unknown"
                 schd_to = "Unknown"
+                route = "Unknown"
 
             # If it didn't just go out of range add the from/to info
             if self.alerts.get(icao):
@@ -103,6 +108,7 @@ class ADSBAlert:
                 "model": model,
                 "origin": schd_from,
                 "destination": schd_to,
+                "route": route,
             }
 
             self.index_record(self.doc)

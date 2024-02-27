@@ -9,7 +9,7 @@ import pyModeS as pms
 from pyModeS.extra.tcpclient import TcpClient
 from terminaltables import AsciiTable
 
-MIN_DIST = float(os.environ.get("MIN_DIST", 5))
+MIN_DIST = float(os.environ.get("MIN_DIST", 7))
 REF_LAT_LON = os.environ.get("REF_LAT_LON", "40.569143,-80.26556")
 REF_LOC = [float(coord.strip()) for coord in REF_LAT_LON.split(",")]
 print(f"Using reference location {REF_LOC} with minimum alert distance of {MIN_DIST}.")

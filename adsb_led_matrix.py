@@ -9,7 +9,7 @@ from adsb_alert import ADSBAlert
 from adsbclient import ADSBClient
 from aircraft_display import AircraftDisplay
 
-MONGO_URI = env.get("MONGO_URI", "192.168.1.200")
+MONGO_URI = env.get("MONGO_URI", "mongodb://192.168.1.200:27017/")
 
 
 def read_data_stream(display_pipe):
@@ -27,14 +27,15 @@ if __name__ == "__main__":
     proc = mp.Process(target=read_data_stream, args=(r_conn,))
     proc.start()
 
-    alerter = ADSBAlert(display_pipe=w_conn, save_alert=True)
+    alerter = ADSBAlert(display_pipe=w_conn, save_alerts=True)
     # run new client, change the host, port, and rawtype if needed
-    mongo = pymongo.MongoClient(f"mongodb://mongo:mongo@{MONGO_URI}:27017/")
+    mongo = pymongo.MongoClient(MONGO_URI)
     db = mongo["adsb"]
     aircraft_db = db["aircraft"]
 
     client = ADSBClient(
-        host="127.0.0.1",
+        # host="127.0.0.1",
+        host="192.168.1.110",
         port=30002,
         rawtype="raw",
         aircraft_db=aircraft_db,
